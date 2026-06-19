@@ -1,0 +1,131 @@
+{
+  "id": "scenario-6-prompt-chaining",
+  "name": "场景6：LLM 节点 Prompt Chaining",
+  "version": 1,
+  "variables": {
+    "rawDocument": { "type": "STRING", "required": true, "description": "待处理的原始文档" },
+    "targetLanguage": { "type": "STRING", "required": false, "defaultValue": "中文", "description": "目标语言" }
+  },
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "extract-key-points",
+      "type": "llm",
+      "name": "Step 1: 提取关键点",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "你是一个文档分析专家，擅长提取核心要点。",
+        "userPrompt": "请从以下文档中提取最多5个关键要点，每个要点一句话概括：\n\n#{rawDocument}",
+        "temperature": 0.3,
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "keyPoints": {
+              "type": "array",
+              "items": { "type": "string" },
+              "maxItems": 5
+            }
+          },
+          "required": ["keyPoints"]
+        }
+      },
+      "output": "extraction"
+    },
+    {
+      "id": "generate-summary",
+      "type": "llm",
+      "name": "Step 2: 生成摘要",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "你是一个优秀的技术写手，擅长将要点整合为流畅的摘要。",
+        "userPrompt": "根据以下关键要点，生成一段200字以内的连贯摘要：\n\n要点列表：\n#{extraction.keyPoints}",
+        "temperature": 0.5,
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string" },
+            "wordCount": { "type": "integer" }
+          },
+          "required": ["summary"]
+        }
+      },
+      "output": "summaryResult"
+    },
+    {
+      "id": "translate",
+      "type": "llm",
+      "name": "Step 3: 翻译",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "你是一位专业翻译，请将内容翻译为指定语言，保持原文含义和语气。",
+        "userPrompt": "请将以下摘要翻译为#{targetLanguage}：\n\n#{summaryResult.summary}",
+        "temperature": 0.2
+      },
+      "output": "translation"
+    },
+    {
+      "id": "quality-check",
+      "type": "llm",
+      "name": "Step 4: 质量评估",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "你是内容质量审核员。请评估翻译质量。",
+        "userPrompt": "原文摘要：#{summaryResult.summary}\n\n翻译结果：#{translation}\n\n请评估翻译质量（1-10分）并指出可能的问题。",
+        "temperature": 0.3,
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "score": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "issues": { "type": "array", "items": { "type": "string" } },
+            "approved": { "type": "boolean" }
+          },
+          "required": ["score", "approved"]
+        }
+      },
+      "output": "qualityResult"
+    },
+    {
+      "id": "check-quality",
+      "type": "condition",
+      "name": "质量检查",
+      "config": {
+        "conditions": [
+          { "expression": "#qualityResult.approved == true", "target": "output-final" }
+        ],
+        "default": "revise"
+      }
+    },
+    {
+      "id": "revise",
+      "type": "llm",
+      "name": "Step 5: 修订",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "请根据审核意见修订翻译内容。",
+        "userPrompt": "原始翻译：#{translation}\n\n审核问题：#{qualityResult.issues}\n\n请修订翻译以解决上述问题。",
+        "temperature": 0.3
+      },
+      "output": "revisedTranslation"
+    },
+    {
+      "id": "output-final",
+      "type": "script",
+      "name": "输出最终结果",
+      "config": {
+        "language": "groovy",
+        "script": "def translation = variables['revisedTranslation'] ?: variables['translation']; return [finalText: translation, keyPoints: variables['extraction'].keyPoints, summary: variables['summaryResult'].summary, qualityScore: variables['qualityResult'].score]"
+      },
+      "output": "finalOutput"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "extract-key-points" },
+    { "from": "extract-key-points", "to": "generate-summary" },
+    { "from": "generate-summary", "to": "translate" },
+    { "from": "translate", "to": "quality-check" },
+    { "from": "quality-check", "to": "check-quality" },
+    { "from": "check-quality", "to": "output-final", "condition": "#qualityResult.approved == true" },
+    { "from": "check-quality", "to": "revise" },
+    { "from": "revise", "to": "output-final" }
+  ]
+}

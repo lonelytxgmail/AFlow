@@ -1,0 +1,88 @@
+{
+  "id": "scenario-5-subflow-nesting",
+  "name": "场景5：子流程嵌套调用",
+  "version": 1,
+  "variables": {
+    "orderIds": { "type": "ARRAY", "required": true, "description": "待处理订单ID列表" },
+    "batchId": { "type": "STRING", "required": true, "description": "批次ID" }
+  },
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "init-batch",
+      "type": "assign",
+      "name": "初始化批次",
+      "config": {
+        "assignments": {
+          "processedCount": "0",
+          "failedCount": "0",
+          "results": "[]"
+        }
+      }
+    },
+    {
+      "id": "process-loop",
+      "type": "forEach",
+      "name": "遍历订单",
+      "config": {
+        "collection": "#orderIds",
+        "itemVariable": "currentOrderId",
+        "body": "process-single-order"
+      }
+    },
+    {
+      "id": "process-single-order",
+      "type": "subflow",
+      "name": "处理单个订单（子流程）",
+      "config": {
+        "definitionId": "order-processing-subflow",
+        "inputMapping": {
+          "orderId": "#currentOrderId",
+          "batchId": "#batchId"
+        }
+      },
+      "output": "orderResult"
+    },
+    {
+      "id": "collect-result",
+      "type": "script",
+      "name": "收集结果",
+      "config": {
+        "language": "groovy",
+        "script": "def results = variables['results'] ?: []; results.add(variables['orderResult']); return [results: results, processedCount: results.size()]"
+      },
+      "output": "batchProgress"
+    },
+    {
+      "id": "generate-report",
+      "type": "subflow",
+      "name": "生成批次报告（子流程）",
+      "config": {
+        "definitionId": "report-generation-subflow",
+        "inputMapping": {
+          "batchId": "#batchId",
+          "results": "#batchProgress.results",
+          "totalCount": "#orderIds.size()"
+        }
+      },
+      "output": "report"
+    },
+    {
+      "id": "notify-complete",
+      "type": "log",
+      "name": "完成通知",
+      "config": {
+        "level": "INFO",
+        "message": "批次 #{batchId} 处理完成，共处理 #{batchProgress.processedCount} 个订单"
+      }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "init-batch" },
+    { "from": "init-batch", "to": "process-loop" },
+    { "from": "process-loop", "to": "process-single-order" },
+    { "from": "process-single-order", "to": "collect-result" },
+    { "from": "collect-result", "to": "generate-report" },
+    { "from": "generate-report", "to": "notify-complete" }
+  ]
+}

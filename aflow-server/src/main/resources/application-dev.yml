@@ -1,0 +1,26 @@
+## ─── 开发环境配置（H2 内存数据库，MySQL 兼容模式） ───
+## 启动方式：mvn spring-boot:run（默认激活 dev profile）
+
+spring:
+  ai:
+    model:
+      chat: none   # 开发环境禁用 LLM，Agent 节点执行时明确报错
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.model.chat.client.autoconfigure.ChatClientAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:aflow;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      dialect: org.hibernate.dialect.MySQLDialect
+    # 开发环境开启 SQL 日志便于调试
+    show-sql: true

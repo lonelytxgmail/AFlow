@@ -1,0 +1,114 @@
+{
+  "id": "scenario-4-approval-human",
+  "name": "场景4：审批节点 + 人工介入",
+  "version": 1,
+  "variables": {
+    "applicant": { "type": "STRING", "required": true, "description": "申请人" },
+    "amount": { "type": "INTEGER", "required": true, "description": "报销金额(元)" },
+    "reason": { "type": "STRING", "required": true, "description": "报销事由" }
+  },
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "validate-input",
+      "type": "script",
+      "name": "输入校验",
+      "config": {
+        "language": "groovy",
+        "script": "def amount = variables['amount']; if (amount <= 0) throw new RuntimeException('金额必须大于0'); return [valid: true, level: amount > 5000 ? 'high' : 'normal']"
+      },
+      "output": "validation"
+    },
+    {
+      "id": "check-level",
+      "type": "condition",
+      "name": "金额级别判断",
+      "config": {
+        "conditions": [
+          { "expression": "#validation.level == 'high'", "target": "manager-approval" }
+        ],
+        "default": "auto-approve"
+      }
+    },
+    {
+      "id": "manager-approval",
+      "type": "approval",
+      "name": "主管审批",
+      "config": {
+        "title": "费用报销审批 - #{applicant}",
+        "description": "申请人：#{applicant}\n金额：#{amount}元\n事由：#{reason}",
+        "options": [
+          { "label": "批准", "value": "approve" },
+          { "label": "拒绝", "value": "reject" },
+          { "label": "退回修改", "value": "return" }
+        ],
+        "timeout": 172800000,
+        "timeoutAction": "escalate"
+      },
+      "output": "approvalResult"
+    },
+    {
+      "id": "auto-approve",
+      "type": "assign",
+      "name": "自动批准",
+      "config": {
+        "assignments": {
+          "approvalResult": "{ decision: 'approve', auto: true }"
+        }
+      }
+    },
+    {
+      "id": "check-decision",
+      "type": "condition",
+      "name": "审批结果检查",
+      "config": {
+        "conditions": [
+          { "expression": "#approvalResult.decision == 'reject'", "target": "notify-rejected" }
+        ],
+        "default": "process-payment"
+      }
+    },
+    {
+      "id": "process-payment",
+      "type": "http",
+      "name": "执行打款",
+      "config": {
+        "url": "https://api.example.com/payments",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json" },
+        "body": "{\"to\": \"#{applicant}\", \"amount\": #{amount}}",
+        "timeout": 15000
+      },
+      "output": "paymentResult"
+    },
+    {
+      "id": "notify-rejected",
+      "type": "log",
+      "name": "通知拒绝",
+      "config": {
+        "level": "INFO",
+        "message": "报销申请被拒绝：#{applicant}，金额：#{amount}元"
+      }
+    },
+    {
+      "id": "notify-success",
+      "type": "log",
+      "name": "通知成功",
+      "config": {
+        "level": "INFO",
+        "message": "报销已处理：#{applicant}，金额：#{amount}元，打款成功"
+      }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "validate-input" },
+    { "from": "validate-input", "to": "check-level" },
+    { "from": "check-level", "to": "manager-approval", "condition": "#validation.level == 'high'" },
+    { "from": "check-level", "to": "auto-approve" },
+    { "from": "manager-approval", "to": "check-decision" },
+    { "from": "auto-approve", "to": "process-payment" },
+    { "from": "check-decision", "to": "notify-rejected", "condition": "#approvalResult.decision == 'reject'" },
+    { "from": "check-decision", "to": "process-payment" },
+    { "from": "process-payment", "to": "notify-success" }
+  ]
+}

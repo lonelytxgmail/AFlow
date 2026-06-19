@@ -1,0 +1,1 @@
+import{az as t,ay as f}from"./index-DWsTKP40.js";const l={list:s=>t("/flows",s),get:s=>t(`/flows/${s}`),start:s=>f("/flows/start",s),resume:(s,o)=>f(`/flows/${s}/resume`,o),retry:(s,o)=>f(`/flows/${s}/retry/${o}`),cancel:s=>f(`/flows/${s}/cancel`),snapshots:s=>t(`/flows/${s}/snapshots`),events:s=>t(`/flows/${s}/events`),diff:(s,o)=>t(`/flows/${s}/diff/${o}`)};export{l as f};

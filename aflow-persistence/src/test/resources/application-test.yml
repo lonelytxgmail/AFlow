@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    # H2 内存数据库，MySQL 兼容模式
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      # 测试环境使用 Hibernate 自动建表，不依赖 Flyway
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  # 测试环境禁用 Flyway，使用 Hibernate ddl-auto 管理 schema
+  flyway:
+    enabled: false

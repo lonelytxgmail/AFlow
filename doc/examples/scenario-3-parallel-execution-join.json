@@ -1,0 +1,76 @@
+{
+  "id": "scenario-3-parallel-join",
+  "name": "场景3：并行执行 + Join",
+  "version": 1,
+  "variables": {
+    "userId": { "type": "STRING", "required": true, "description": "用户ID" }
+  },
+  "parallelStrategy": "WAIT_ALL",
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "fetch-profile",
+      "type": "http",
+      "name": "获取用户资料",
+      "config": {
+        "url": "https://api.example.com/users/#{userId}/profile",
+        "method": "GET",
+        "timeout": 5000
+      },
+      "output": "profile"
+    },
+    {
+      "id": "fetch-orders",
+      "type": "http",
+      "name": "获取订单历史",
+      "config": {
+        "url": "https://api.example.com/users/#{userId}/orders",
+        "method": "GET",
+        "timeout": 8000
+      },
+      "output": "orders"
+    },
+    {
+      "id": "fetch-preferences",
+      "type": "http",
+      "name": "获取偏好设置",
+      "config": {
+        "url": "https://api.example.com/users/#{userId}/preferences",
+        "method": "GET",
+        "timeout": 5000
+      },
+      "output": "preferences"
+    },
+    {
+      "id": "aggregate",
+      "type": "script",
+      "name": "聚合结果",
+      "config": {
+        "language": "groovy",
+        "script": "return [profile: variables['profile'], orderCount: variables['orders']?.size() ?: 0, preferences: variables['preferences']]"
+      },
+      "output": "aggregatedData"
+    },
+    {
+      "id": "generate-recommendation",
+      "type": "llm",
+      "name": "生成推荐",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "根据用户画像生成个性化推荐",
+        "userPrompt": "用户资料：#{aggregatedData.profile}\n订单数：#{aggregatedData.orderCount}\n偏好：#{aggregatedData.preferences}\n\n请生成3条推荐",
+        "temperature": 0.8
+      },
+      "output": "recommendations"
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "fetch-profile" },
+    { "from": "start", "to": "fetch-orders" },
+    { "from": "start", "to": "fetch-preferences" },
+    { "from": "fetch-profile", "to": "aggregate" },
+    { "from": "fetch-orders", "to": "aggregate" },
+    { "from": "fetch-preferences", "to": "aggregate" },
+    { "from": "aggregate", "to": "generate-recommendation" }
+  ]
+}

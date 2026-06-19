@@ -1,0 +1,93 @@
+{
+  "id": "scenario-1-conditional-routing",
+  "name": "场景1：条件路由 + 错误边 fallback",
+  "version": 1,
+  "variables": {
+    "userInput": { "type": "STRING", "required": true, "description": "用户输入内容" }
+  },
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "classify",
+      "type": "script",
+      "name": "输入分类",
+      "config": {
+        "language": "groovy",
+        "script": "def input = variables['userInput']; return [category: input.length() > 50 ? 'complex' : 'simple']"
+      },
+      "output": "classification"
+    },
+    {
+      "id": "route",
+      "type": "condition",
+      "name": "路由判断",
+      "config": {
+        "conditions": [
+          { "expression": "#classification.category == 'complex'", "target": "complex-handler" }
+        ],
+        "default": "simple-handler"
+      }
+    },
+    {
+      "id": "complex-handler",
+      "type": "http",
+      "name": "复杂处理（可能失败）",
+      "config": {
+        "url": "https://api.example.com/complex-process",
+        "method": "POST",
+        "body": "#{userInput}",
+        "timeout": 10000
+      },
+      "output": "processResult"
+    },
+    {
+      "id": "simple-handler",
+      "type": "script",
+      "name": "简单处理",
+      "config": {
+        "language": "groovy",
+        "script": "return [result: 'processed: ' + variables['userInput']]"
+      },
+      "output": "processResult"
+    },
+    {
+      "id": "error-fallback",
+      "type": "log",
+      "name": "错误降级处理",
+      "config": {
+        "level": "WARN",
+        "message": "复杂处理失败，执行降级逻辑"
+      }
+    },
+    {
+      "id": "fallback-process",
+      "type": "script",
+      "name": "降级方案",
+      "config": {
+        "language": "groovy",
+        "script": "return [result: 'fallback: ' + variables['userInput'], degraded: true]"
+      },
+      "output": "processResult"
+    },
+    {
+      "id": "output",
+      "type": "log",
+      "name": "输出结果",
+      "config": {
+        "level": "INFO",
+        "message": "处理完成：#{processResult}"
+      }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "classify" },
+    { "from": "classify", "to": "route" },
+    { "from": "route", "to": "complex-handler", "condition": "#classification.category == 'complex'" },
+    { "from": "route", "to": "simple-handler" },
+    { "from": "complex-handler", "to": "output" },
+    { "from": "complex-handler", "to": "error-fallback", "type": "error" },
+    { "from": "error-fallback", "to": "fallback-process" },
+    { "from": "fallback-process", "to": "output" },
+    { "from": "simple-handler", "to": "output" }
+  ]
+}

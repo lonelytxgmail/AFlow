@@ -1,0 +1,84 @@
+{
+  "id": "scenario-2-agent-guardrails",
+  "name": "场景2：Agent + 工具调用 + Guardrails",
+  "version": 1,
+  "variables": {
+    "question": { "type": "STRING", "required": true, "description": "用户问题" },
+    "context": { "type": "STRING", "required": false, "description": "上下文信息" }
+  },
+  "nodes": [
+    { "id": "start", "type": "start", "name": "开始" },
+    {
+      "id": "research-agent",
+      "type": "agent",
+      "name": "研究分析Agent",
+      "config": {
+        "model": "gpt-4",
+        "systemPrompt": "你是一个专业的研究分析助手。根据用户问题进行调研，使用可用工具获取信息，最终给出结构化的分析报告。",
+        "userPrompt": "请分析以下问题：#{question}\n\n上下文：#{context}",
+        "tools": ["web_search", "calculate", "summarize"],
+        "maxIterations": 8,
+        "temperature": 0.7,
+        "toolTimeout": 15000,
+        "maxTokenBudget": 12000,
+        "toolResultMaxLength": 3000,
+        "toolRateLimit": {
+          "maxCallsPerTool": 5,
+          "maxTotalCalls": 15
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string", "description": "一句话概括" },
+            "findings": { "type": "array", "items": { "type": "string" } },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "sources": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["summary", "findings", "confidence"]
+        },
+        "outputValidation": {
+          "strategy": "retry",
+          "maxRetries": 2
+        }
+      },
+      "output": "agentResult"
+    },
+    {
+      "id": "validate-output",
+      "type": "condition",
+      "name": "结果质量检查",
+      "config": {
+        "conditions": [
+          { "expression": "#agentResult.confidence >= 0.7", "target": "format-report" }
+        ],
+        "default": "low-confidence-handler"
+      }
+    },
+    {
+      "id": "format-report",
+      "type": "script",
+      "name": "格式化报告",
+      "config": {
+        "language": "groovy",
+        "script": "def r = variables['agentResult']; return [report: '## 分析报告\\n\\n' + r.summary + '\\n\\n### 发现\\n' + r.findings.join('\\n- ')]"
+      },
+      "output": "finalReport"
+    },
+    {
+      "id": "low-confidence-handler",
+      "type": "log",
+      "name": "低置信度警告",
+      "config": {
+        "level": "WARN",
+        "message": "Agent分析结果置信度较低(#{agentResult.confidence})，请人工复核"
+      }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "research-agent" },
+    { "from": "research-agent", "to": "validate-output" },
+    { "from": "validate-output", "to": "format-report", "condition": "#agentResult.confidence >= 0.7" },
+    { "from": "validate-output", "to": "low-confidence-handler" },
+    { "from": "low-confidence-handler", "to": "format-report" }
+  ]
+}
