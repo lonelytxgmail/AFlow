@@ -38,4 +38,20 @@ public @interface FlowNode {
      * Description of what this node type does.
      */
     String description() default "";
+
+    /**
+     * JSON Schema describing the configuration fields this node type accepts.
+     * <p>
+     * The schema follows JSON Schema draft-07 with optional {@code x-} extensions for UI hints:
+     * <ul>
+     *   <li>{@code x-component} — UI component hint (input, select, key-value, textarea, code-editor)</li>
+     *   <li>{@code x-order} — display order in forms</li>
+     *   <li>{@code x-group} — logical grouping label</li>
+     * </ul>
+     * <p>
+     * Example: {@code "{ \"properties\": { \"url\": { \"type\": \"string\" } } }"}
+     * <p>
+     * Defaults to empty string (no schema).
+     */
+    String configSchema() default "";
 }

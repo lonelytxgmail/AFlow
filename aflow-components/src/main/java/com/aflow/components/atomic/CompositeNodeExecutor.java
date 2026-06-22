@@ -73,12 +73,26 @@ public class CompositeNodeExecutor implements NodeExecutor {
         @SuppressWarnings("unchecked")
         Map<String, Object> userParams = cfg.get("params") instanceof Map ? (Map<String, Object>) cfg.get("params") : Map.of();
         validateRequiredInputs(component, userParams);
+
+        // 3. 将用户参数注入 FlowContext（支持模板解析）
+        //    params 的值本身可能是模板表达式（如 ${#previousOutput}），先解析再注入
+        for (Map.Entry<String, Object> entry : userParams.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof String strVal && strVal.contains("${")) {
+                // 如果 params 值是模板表达式，先解析
+                // 注: 这里的 resolveTemplate 需要从 Spring 容器获取，暂时直接 put 原值
+                // 模板解析会在最终执行器中进行
+            }
+            context.putVariable(entry.getKey(), value);
+        }
+
+        // 4. 将模板配置合并（params 中的同名字段覆盖模板默认值）
         templateConfig.putAll(userParams);
 
-        // 3. 创建实际执行器的 NodeConfig
+        // 5. 创建实际执行器的 NodeConfig
         NodeConfig delegateConfig = new NodeConfig(component.getNodeType(), templateConfig, config.getOutputVariable());
 
-        // 4. 委托给实际的 NodeExecutor 执行
+        // 6. 委托给实际的 NodeExecutor 执行
         NodeExecutor delegateExecutor = nodeRegistryProvider.getObject().getExecutor(component.getNodeType());
         if (delegateExecutor == null) {
             throw new IllegalArgumentException("节点执行器不存在: type=" + component.getNodeType());
@@ -93,14 +107,20 @@ public class CompositeNodeExecutor implements NodeExecutor {
 
     /**
      * 解析配置模板 JSON 为 Map。
+     * 处理可能的双重序列化情况（configTemplate 存储为 JSON 字符串的字符串）。
      */
     private Map<String, Object> parseConfigTemplate(String configTemplate) {
         if (configTemplate == null || configTemplate.isEmpty()) {
             return new java.util.HashMap<>();
         }
         try {
+            String jsonStr = configTemplate.trim();
+            // 处理双重序列化：如果以引号开头，先反序列化一层
+            if (jsonStr.startsWith("\"") && jsonStr.endsWith("\"")) {
+                jsonStr = JsonUtil.fromJson(jsonStr, String.class);
+            }
             @SuppressWarnings("unchecked")
-            Map<String, Object> map = JsonUtil.fromJson(configTemplate, Map.class);
+            Map<String, Object> map = JsonUtil.fromJson(jsonStr, Map.class);
             return map != null ? new java.util.HashMap<>(map) : new java.util.HashMap<>();
         } catch (Exception e) {
             log.warn("解析配置模板失败: {}", e.getMessage());

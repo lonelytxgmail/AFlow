@@ -25,9 +25,13 @@ export const atomicApi = {
   invoke: (componentType: string, data: AtomicInvokeRequest) =>
     post<AtomicInvokeResponse>(`/atomic/${componentType}`, data),
 
-  /** Invoke a saved atomic component */
-  invokeComponent: (id: string, data: AtomicInvokeRequest) =>
-    post<AtomicInvokeResponse>(`/atomic/components/${id}/invoke`, data),
+  /** Invoke a saved atomic component (pass only business variables) */
+  invokeComponent: (id: string, variables: Record<string, unknown>) =>
+    post<Record<string, any>>(`/atomic/components/${id}/invoke`, variables),
+
+  /** Get required variables for an atomic component */
+  getVariables: (id: string) =>
+    get<Array<{ name: string; expression: string; context: string }>>(`/atomic/components/${id}/variables`),
 
   /** List atomic components with optional filters */
   listComponents: (params?: AtomicComponentListParams) =>

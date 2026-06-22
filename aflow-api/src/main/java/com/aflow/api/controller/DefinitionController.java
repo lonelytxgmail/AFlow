@@ -66,7 +66,7 @@ public class DefinitionController {
         return ApiResponse.ok(definitionService.findAll());
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[a-fA-F0-9\\-]{36}}")
     public ApiResponse<?> get(@PathVariable String id) {
         return definitionService.findById(id)
                 .map(def -> {
@@ -76,7 +76,7 @@ public class DefinitionController {
                 .orElse(ApiResponse.error("Definition not found: " + id));
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{id:[a-fA-F0-9\\-]{36}}")
     public ApiResponse<?> update(@PathVariable String id, @Valid @RequestBody CreateDefinitionRequest request) {
         log.info("Updating definition: id={}, name={}", id, request.name());
         if (request.dslContent() != null) {
@@ -94,7 +94,7 @@ public class DefinitionController {
         return ApiResponse.ok("Updated");
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:[a-fA-F0-9\\-]{36}}")
     public ApiResponse<?> delete(@PathVariable String id) {
         log.info("Deleting definition: id={}", id);
         definitionService.delete(id);
@@ -116,7 +116,7 @@ public class DefinitionController {
         return ApiResponse.ok(Map.of("valid", errors.isEmpty(), "errors", errors));
     }
 
-    @PostMapping("/{id}/publish")
+    @PostMapping("/{id:[a-fA-F0-9\\-]{36}}/publish")
     public ApiResponse<?> publish(@PathVariable String id) {
         log.info("Publishing definition: id={}", id);
         definitionService.updateStatus(id, "PUBLISHED");
@@ -127,7 +127,7 @@ public class DefinitionController {
 
     // --- Version Management Endpoints ---
 
-    @GetMapping("/{id}/versions")
+    @GetMapping("/{id:[a-fA-F0-9\\-]{36}}/versions")
     public ApiResponse<?> listVersions(@PathVariable String id) {
         List<DefinitionVersionEntity> versions = versionService.listVersions(id);
         List<Map<String, Object>> result = versions.stream().map(v -> Map.<String, Object>of(
@@ -137,7 +137,7 @@ public class DefinitionController {
         return ApiResponse.ok(result);
     }
 
-    @GetMapping("/{id}/versions/{versionNumber}")
+    @GetMapping("/{id:[a-fA-F0-9\\-]{36}}/versions/{versionNumber}")
     public ApiResponse<?> getVersion(@PathVariable String id, @PathVariable int versionNumber) {
         return versionService.getVersion(id, versionNumber)
                 .map(v -> ApiResponse.ok(Map.of(
@@ -148,7 +148,7 @@ public class DefinitionController {
                 .orElse(ApiResponse.error("Version not found: " + versionNumber));
     }
 
-    @PostMapping("/{id}/versions/{versionNumber}/rollback")
+    @PostMapping("/{id:[a-fA-F0-9\\-]{36}}/versions/{versionNumber}/rollback")
     public ApiResponse<?> rollback(@PathVariable String id, @PathVariable int versionNumber) {
         log.info("Rolling back definition: id={}, to version={}", id, versionNumber);
         DefinitionVersionEntity newVersion = versionService.rollback(id, versionNumber);

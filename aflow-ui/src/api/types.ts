@@ -147,7 +147,7 @@ export interface NodeRegistryItem {
   type: string
   name: string
   description: string
-  configSchema: string
+  configSchema: string | Record<string, any>
 }
 
 export interface ComponentRegistryItem {

@@ -65,6 +65,7 @@ declare module 'vue' {
     NormalEdge: typeof import('./src/components/dag/NormalEdge.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SchemaForm: typeof import('./src/components/SchemaForm.vue')['default']
     ScriptConfigPanel: typeof import('./src/components/config-panels/ScriptConfigPanel.vue')['default']
     SnapshotDiff: typeof import('./src/components/debug/SnapshotDiff.vue')['default']
     StatusBar: typeof import('./src/components/common/StatusBar.vue')['default']

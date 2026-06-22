@@ -1,7 +1,6 @@
 package com.aflow.api.controller;
 
 import com.aflow.api.dto.ApiResponse;
-import com.aflow.api.dto.AtomicCallRequest;
 import com.aflow.common.executor.NodeExecutor;
 import com.aflow.common.model.AtomicComponent;
 import com.aflow.common.model.FlowContext;
@@ -125,27 +124,140 @@ public class AtomicComponentController {
     }
 
     /**
-     * 独立测试调用一个已发布的原子能力。
+     * 获取原子能力所需的变量列表。
+     * <p>
+     * 扫描 configTemplate 中的 ${#xxx} 占位符，返回需要传入的变量清单。
+     */
+    @GetMapping("/components/{id}/variables")
+    public ApiResponse<List<Map<String, String>>> getVariables(@PathVariable String id) {
+        AtomicComponent component = persistenceService.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("原子能力不存在: " + id));
+        List<Map<String, String>> variables = extractVariables(component.getConfigTemplate());
+        return ApiResponse.ok(variables);
+    }
+
+    /**
+     * 调试执行一个原子能力。
+     * <p>
+     * 请求体直接传入业务参数（变量 map），不需要传 config。
+     * 响应包含执行结果和调试信息（解析后的实际配置、耗时、模板解析详情）。
      */
     @PostMapping("/components/{id}/invoke")
-    public ApiResponse<NodeResult> invoke(@PathVariable String id, @RequestBody AtomicCallRequest request) {
+    public ApiResponse<Map<String, Object>> invoke(@PathVariable String id, @RequestBody Map<String, Object> variables) {
         AtomicComponent component = persistenceService.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("原子能力不存在: " + id));
         if (!"PUBLISHED".equalsIgnoreCase(component.getStatus())) {
             throw new IllegalArgumentException("原子能力未发布，无法调用: " + id);
         }
 
+        long startTime = System.currentTimeMillis();
+
+        // 1. 创建临时 FlowContext，注入用户传入的变量
         FlowContext tempContext = new FlowContext(UUID.randomUUID().toString(), "atomic-" + id);
-        if (request.inputs() != null) {
-            tempContext.mergeOutputs(request.inputs());
+        if (variables != null && !variables.isEmpty()) {
+            tempContext.mergeOutputs(variables);
         }
 
-        Map<String, Object> config = request.config() != null ? request.config() : Map.of();
+        // 2. 通过 CompositeNodeExecutor 执行（params 为空，变量全部通过 context 传递）
         NodeExecutor executor = nodeRegistry.getExecutor("composite");
         NodeConfig nodeConfig = new NodeConfig("composite",
-                Map.of("componentId", id, "params", config),
+                Map.of("componentId", id, "params", Map.of()),
                 null);
-        return ApiResponse.ok(executor.execute(nodeConfig, tempContext));
+
+        NodeResult result = executor.execute(nodeConfig, tempContext);
+        long duration = System.currentTimeMillis() - startTime;
+
+        // 3. 构造调试信息
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", result.status().name());
+        response.put("output", result.outputs());
+        if (result.errorMessage() != null) {
+            response.put("error", result.errorMessage());
+        }
+
+        // 调试详情
+        Map<String, Object> debug = new LinkedHashMap<>();
+        debug.put("duration", duration);
+        debug.put("componentName", component.getName());
+        debug.put("nodeType", component.getNodeType());
+        debug.put("inputVariables", variables != null ? variables : Map.of());
+
+        // 解析后的配置（展示实际发出的请求）
+        Map<String, Object> resolvedConfig = buildResolvedConfig(component, tempContext);
+        debug.put("resolvedConfig", resolvedConfig);
+
+        response.put("debug", debug);
+        return ApiResponse.ok(response);
+    }
+
+    /**
+     * 从 configTemplate 中提取 ${#xxx} 占位符变量。
+     */
+    private List<Map<String, String>> extractVariables(String configTemplate) {
+        List<Map<String, String>> variables = new java.util.ArrayList<>();
+        if (configTemplate == null || configTemplate.isBlank()) return variables;
+
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{#([^}]+)}");
+        java.util.regex.Matcher matcher = pattern.matcher(configTemplate);
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+
+        while (matcher.find()) {
+            String varExpr = matcher.group(1).trim();
+            // 提取变量名（忽略属性访问如 env.xxx）
+            String varName = varExpr.contains(".") ? varExpr.split("\\.")[0] : varExpr;
+            if (seen.add(varName)) {
+                Map<String, String> varInfo = new LinkedHashMap<>();
+                varInfo.put("name", varName);
+                varInfo.put("expression", varExpr);
+                // 找到包含这个变量的配置上下文
+                int start = Math.max(0, matcher.start() - 20);
+                int end = Math.min(configTemplate.length(), matcher.end() + 20);
+                varInfo.put("context", configTemplate.substring(start, end).replaceAll("\\s+", " ").trim());
+                variables.add(varInfo);
+            }
+        }
+        return variables;
+    }
+
+    /**
+     * 构建解析后的配置（用于调试展示）。
+     */
+    private Map<String, Object> buildResolvedConfig(AtomicComponent component, FlowContext context) {
+        String configTemplate = component.getConfigTemplate();
+        if (configTemplate == null || configTemplate.isBlank()) return Map.of();
+        try {
+            String jsonStr = configTemplate.trim();
+            // 处理双重序列化
+            if (jsonStr.startsWith("\"") && jsonStr.endsWith("\"")) {
+                jsonStr = com.aflow.common.util.JsonUtil.fromJson(jsonStr, String.class);
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> template = com.aflow.common.util.JsonUtil.fromJson(jsonStr, Map.class);
+            if (template == null) return Map.of();
+
+            Map<String, Object> resolved = new LinkedHashMap<>();
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{#?([^}]+)}");
+            for (Map.Entry<String, Object> entry : template.entrySet()) {
+                Object value = entry.getValue();
+                if (value instanceof String strVal) {
+                    java.util.regex.Matcher m = pattern.matcher(strVal);
+                    StringBuilder sb = new StringBuilder();
+                    while (m.find()) {
+                        String expr = m.group(1).trim();
+                        Object resolvedVal = context.getVariables().get(expr);
+                        m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(
+                                resolvedVal != null ? resolvedVal.toString() : "${#" + expr + "}"));
+                    }
+                    m.appendTail(sb);
+                    resolved.put(entry.getKey(), sb.toString());
+                } else {
+                    resolved.put(entry.getKey(), value);
+                }
+            }
+            return resolved;
+        } catch (Exception e) {
+            return Map.of("error", "Failed to resolve: " + e.getMessage());
+        }
     }
 
     /**

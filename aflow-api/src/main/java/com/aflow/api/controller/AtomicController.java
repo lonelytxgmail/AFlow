@@ -43,14 +43,15 @@ public class AtomicController {
     }
 
     @GetMapping("/node-registry")
-    public ApiResponse<List<Map<String, String>>> registry() {
-        List<Map<String, String>> components = new ArrayList<>();
+    public ApiResponse<List<Map<String, Object>>> registry() {
+        List<Map<String, Object>> components = new ArrayList<>();
         registry.getAllMetadata().forEach((type, annotation) -> {
-            Map<String, String> info = new LinkedHashMap<>();
+            Map<String, Object> info = new LinkedHashMap<>();
             info.put("type", type);
             info.put("name", annotation.name());
             info.put("description", annotation.description());
-            info.put("configSchema", "{}");
+            String schema = annotation.configSchema();
+            info.put("configSchema", (schema != null && !schema.isBlank()) ? schema : "{}");
             components.add(info);
         });
         return ApiResponse.ok(components);
